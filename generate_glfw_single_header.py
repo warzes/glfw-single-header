@@ -8,23 +8,26 @@
 import os
 
 win32_defines = [ 
-                 "#ifdef _MSC_VER\n#define _CRT_SECURE_NO_WARNINGS\n#endif",
-                 "#ifndef _GLFW_USE_HYBRID_HPG\n#define _GLFW_USE_HYBRID_HPG 1\n#endif",
                  "#define _UNICODE",
-                 "#ifdef MINGW\n#define UNICODE\n#define WINVER 0x0501\n#endif", ]
+                 "#ifdef MINGW\n#define UNICODE\n#define WINVER 0x0501\n#endif",
+                ]
 
-win32_sources   = [ "win32_init.c", "win32_joystick.c", "win32_monitor.c", "win32_time.c", "win32_thread.c", "win32_window.c", "wgl_context.c", ]
+win32_sources   = [ "win32_init.c", "win32_joystick.c", "win32_module.c", "win32_monitor.c", "win32_time.c", "win32_thread.c", "win32_window.c", "wgl_context.c", ]
 osmesa_sources  = [ "null_init.c", "null_monitor.c", "null_window.c", "null_joystick.c", ]
 x11_sources     = [ "x11_init.c", "x11_monitor.c", "x11_window.c", "glx_context.c",  ]
 wayland_sources = [ "wl_init.c", "wl_monitor.c", "wl_window.c",  ]
 cocoa_sources   = [ "cocoa_init.m", "nsgl_context.m", "cocoa_joystick.m", "cocoa_monitor.m", "cocoa_window.m", "cocoa_time.c", ]
 time_sources    = [ "posix_time.c", ]
 thread_sources  = [ "posix_thread.c", ]
+module_sources  = [ "posix_module.c", ]
+poll_sources  = [ "posix_poll.c", ]
+
 linux_sources   = [ "linux_joystick.c", "xkb_unicode.c", ]
 
 headers = list([
 "cocoa_joystick.h",
 "cocoa_platform.h",
+"cocoa_time.h",
 "egl_context.h",
 "glx_context.h",
 "linux_joystick.h",
@@ -32,17 +35,21 @@ headers = list([
 "nsgl_context.h",
 "null_joystick.h",
 "null_platform.h",
+"platform.h",
 "osmesa_context.h",
+"posix_poll.h",
 "posix_thread.h",
 "posix_time.h",
 "wgl_context.h",
 "win32_joystick.h",
 "win32_platform.h",
+"win32_thread.h",
+"win32_time.h",
 "wl_platform.h",
 "x11_platform.h",
 "xkb_unicode.h",
 ])
-shared_sources = [ "internal.h", "osmesa_context.c", "egl_context.c", "context.c", "init.c", "input.c", "monitor.c", "vulkan.c", "window.c", ]
+shared_sources = [ "internal.h", "osmesa_context.c", "egl_context.c", "context.c", "init.c", "input.c", "platform.c", "monitor.c", "vulkan.c", "window.c", ]
 
 # Get the file using this function since it might be cached
 files_cache = {}
@@ -83,7 +90,10 @@ for it in win32_sources:
 win32_source_result += "\n#endif\n"
 
 # Add osmesa code
-osmesa_source_result = "\n#ifdef _GLFW_OSMESA\n"
+osmesa_source_result = "\n#ifndef _GLFW_OSMESA\n"
+osmesa_source_result += "GLFWbool _glfwConnectNull(int platformID, _GLFWplatform* platform) { return GLFW_FALSE; }"
+osmesa_source_result += "\n#endif\n"
+osmesa_source_result += "\n#ifdef _GLFW_OSMESA\n"
 for it in osmesa_sources:
     osmesa_source_result += include_headers(headers, lsh_get_file(it))
 osmesa_source_result += "\n#endif\n"
@@ -118,6 +128,18 @@ for it in thread_sources:
     thread_source_result += include_headers(headers, lsh_get_file(it))
 thread_source_result += "\n#endif\n"
 
+# Add posix_module code (if linux+osx) (if !win32)
+module_source_result = "\n#if !defined _GLFW_WIN32\n"
+for it in module_sources:
+    module_source_result += include_headers(headers, lsh_get_file(it))
+module_source_result += "\n#endif\n"
+
+# Add posix_poll code (if linux+osx) (if !win32)
+poll_source_result = "\n#if !defined _GLFW_WIN32\n"
+for it in poll_sources:
+    poll_source_result += include_headers(headers, lsh_get_file(it))
+poll_source_result += "\n#endif\n"
+
 # Add linux code (if !osx && !win32 && !mesa)
 linux_source_result = "\n#if !defined _GLFW_COCOA && !defined _GLFW_WIN32 && !defined _GLFW_OSMESA\n"
 for it in linux_sources:
@@ -129,8 +151,33 @@ headers_result = open("./glfw/include/GLFW/glfw3.h").read() + "\n" + open("./glf
 
 # Add single header
 source_result = "\n#ifdef _GLFW_IMPLEMENTATION\n"
+
+source_result += "\n#if defined(_WIN32) || defined(__CYGWIN__)"
+source_result += "\n# define _GLFW_WIN32"
+source_result += "\n#endif"
+
+source_result += "\n#if defined(__linux__)"
+source_result += "\n#	if !defined(_GLFW_WAYLAND)     // Required for Wayland windowing"
+source_result += "\n#       define _GLFW_X11"
+source_result += "\n#   endif"
+source_result += "\n#endif"
+
+source_result += "\n#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)"
+source_result += "\n#	define _GLFW_X11"
+source_result += "\n#endif"
+
+source_result += "\n#if defined(__APPLE__)"
+source_result += "\n#	define _GLFW_COCOA"
+source_result += "\n#	define _GLFW_USE_MENUBAR       // To create and populate the menu bar when the first window is created"
+source_result += "\n#	define _GLFW_USE_RETINA        // To have windows use the full resolution of Retina displays"
+source_result += "\n#endif"
+
+source_result += "\n#if defined(__TINYC__)"
+source_result += "\n#	define _WIN32_WINNT_WINXP      0x0501"
+source_result += "\n#endif"
+
 source_result += shared_source_result + win32_source_result + osmesa_source_result + x11_source_result + wayland_source_result + cocoa_source_result
-source_result += time_source_result + thread_source_result + linux_source_result
+source_result += time_source_result + thread_source_result + module_source_result + poll_source_result + linux_source_result
 source_result += "\n#endif\n"
 
 # Comment out options macro error
@@ -142,11 +189,6 @@ source_result = source_result.replace("#error \"You must not define any header o
 
 source_result = source_result.replace("#include \"../include/GLFW/glfw3.h\"", "//#include \"../include/GLFW/glfw3.h\"")
 source_result = source_result.replace("#include \"internal.h\"", "\n")
-
-# for glad
-opengl_defines = [ "GL_VERSION", "GL_EXTENSIONS", "GL_NUM_EXTENSIONS", "GL_CONTEXT_FLAGS", "GL_CONTEXT_RELEASE_BEHAVIOR", "GL_CONTEXT_RELEASE_BEHAVIOR_FLUSH", ]
-for it in opengl_defines:
-    source_result = source_result.replace(f"#define {it}", f"//#define {it}")
 
 # Make dirs
 if not os.path.exists("./source"):
