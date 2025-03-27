@@ -60,7 +60,7 @@ def lsh_get_file(it: str) -> str:
 
     guard = f"HEADER_GUARD_{it.replace('.', '_').upper()}"
     code = open(f"./glfw/src/{it}").read()
-    files_cache[it] = f"\n#line 1 \"{it}\"\n"
+    files_cache[it] = f"\n//#line 1 \"{it}\"\n"
     files_cache[it]+= f"\n#ifndef {guard}\n#define {guard}\n{code}\n#endif\n"
 
     return files_cache[it]
