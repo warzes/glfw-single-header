@@ -188,7 +188,9 @@ source_result = source_result.replace("#error \"You must not define any header o
 #     source_result = source_result.replace(f"#include \"{it}\"", f"//#include \"{it}\"")
 
 source_result = source_result.replace("#include \"../include/GLFW/glfw3.h\"", "//#include \"../include/GLFW/glfw3.h\"")
-source_result = source_result.replace("#include \"internal.h\"", "\n")
+source_result = source_result.replace("#include \"../include/GLFW/glfw3native.h\"", "")
+
+source_result = source_result.replace("#include \"internal.h\"", "")
 
 # Make dirs
 if not os.path.exists("./source"):
